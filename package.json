@@ -1,0 +1,18 @@
+{
+  "name": "skyrim-minecraft-game",
+  "version": "1.0.0",
+  "description": "A 3D game combining elements of Minecraft and Skyrim",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.159.0",
+    "cannon-es": "^0.20.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+} 
