@@ -33,56 +33,74 @@ directionalLight.shadow.mapSize.width = 2048;
 directionalLight.shadow.mapSize.height = 2048;
 scene.add(directionalLight);
 
-// Create floor
-const floorGeometry = new THREE.PlaneGeometry(20, 20);
-floorGeometry.rotateX(-Math.PI / 2);
-const floorMaterial = new THREE.MeshStandardMaterial({
-  color: 0x8b4513,
-  roughness: 0.8,
+// Add ground
+const groundGeometry = new THREE.PlaneGeometry(50, 50);
+const groundMaterial = new THREE.MeshStandardMaterial({
+  color: 0x7cfc00, // Lawn green
+  flatShading: true,
 });
-const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-floor.receiveShadow = true;
-scene.add(floor);
+const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Add grid helper
+const gridHelper = new THREE.GridHelper(50, 50);
+scene.add(gridHelper);
 
 // Create furniture
 createFurniture();
 
-function createFurniture() {
-  // Create bed
-  const bed = Furniture.create(scene, "bed", new THREE.Vector3(-5, 0, 0), {
-    width: 2.5,
-    length: 5,
+function createFurniture(): void {
+  // Create a bed
+  Furniture.createBed(scene, new THREE.Vector3(-5, 0, 0), {
+    width: 2,
+    height: 0.5,
+    depth: 3,
+  });
+
+  // Create a desk
+  Furniture.createDesk(scene, new THREE.Vector3(0, 0, 0), {
+    width: 2,
     height: 0.8,
+    depth: 1,
   });
 
-  // Create desk
-  const desk = Furniture.create(scene, "desk", new THREE.Vector3(0, 0, -5), {
-    width: 2.5,
-    depth: 1.2,
-    height: 1.3,
+  // Create a chair
+  Furniture.createChair(scene, new THREE.Vector3(0, 0, 2), {
+    width: 0.6,
+    height: 1.2,
+    depth: 0.6,
   });
 
-  // Create chair
-  const chair = Furniture.create(scene, "chair", new THREE.Vector3(0, 0, -3), {
-    width: 0.9,
-    depth: 0.9,
-    seatHeight: 0.9,
+  // Create a chest
+  Furniture.createChest(scene, new THREE.Vector3(3, 0, 0), {
+    width: 1,
+    height: 0.8,
+    depth: 0.7,
   });
 
-  // Create chest
-  const chest = Furniture.create(scene, "chest", new THREE.Vector3(5, 0, 0), {
-    width: 1.8,
-    depth: 1.2,
-    height: 1.0,
-  });
-
-  // Create table
-  const table = Furniture.create(scene, "table", new THREE.Vector3(0, 0, 5), {
-    width: 4,
-    depth: 2,
-    height: 1.4,
+  // Create a table
+  Furniture.createTable(scene, new THREE.Vector3(5, 0, 0), {
+    width: 2,
+    height: 0.8,
+    depth: 1,
   });
 }
+
+// Animation loop
+function animate(): void {
+  requestAnimationFrame(animate);
+
+  // Update controls
+  controls.update();
+
+  // Render scene
+  renderer.render(scene, camera);
+}
+
+// Start animation
+animate();
 
 // Handle window resize
 window.addEventListener("resize", () => {
@@ -90,12 +108,3 @@ window.addEventListener("resize", () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
-
-// Animation loop
-function animate() {
-  requestAnimationFrame(animate);
-  controls.update();
-  renderer.render(scene, camera);
-}
-
-animate();

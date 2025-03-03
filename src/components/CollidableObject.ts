@@ -1,7 +1,25 @@
 import * as THREE from "three";
 
+export interface CollidableObjectOptions {
+  position?: THREE.Vector3;
+  dimensions?: THREE.Vector3;
+  rotation?: THREE.Euler;
+  color?: number;
+  materialType?: "standard" | "basic" | "phong";
+  materialOptions?: {
+    flatShading?: boolean;
+    [key: string]: any;
+  };
+  [key: string]: any;
+}
+
 export class CollidableObject {
-  constructor(scene, options = {}) {
+  scene: THREE.Scene;
+  mesh: THREE.Mesh | null;
+  isCollidable: boolean;
+  options: CollidableObjectOptions;
+
+  constructor(scene: THREE.Scene, options: CollidableObjectOptions = {}) {
     this.scene = scene;
     this.mesh = null;
     this.isCollidable = true;
@@ -20,16 +38,16 @@ export class CollidableObject {
     };
   }
 
-  create() {
+  create(): THREE.Mesh {
     // Create geometry based on dimensions
     const geometry = new THREE.BoxGeometry(
-      this.options.dimensions.x,
-      this.options.dimensions.y,
-      this.options.dimensions.z
+      this.options.dimensions!.x,
+      this.options.dimensions!.y,
+      this.options.dimensions!.z
     );
 
     // Create material based on type
-    let material;
+    let material: THREE.Material;
     switch (this.options.materialType) {
       case "basic":
         material = new THREE.MeshBasicMaterial({
@@ -54,8 +72,8 @@ export class CollidableObject {
 
     // Create mesh
     this.mesh = new THREE.Mesh(geometry, material);
-    this.mesh.position.copy(this.options.position);
-    this.mesh.rotation.copy(this.options.rotation);
+    this.mesh.position.copy(this.options.position!);
+    this.mesh.rotation.copy(this.options.rotation!);
 
     // Set mesh properties for collision
     this.mesh.userData.isCollidable = this.isCollidable;
@@ -72,7 +90,7 @@ export class CollidableObject {
   }
 
   // Method to check if a point is inside or near this object
-  checkCollision(point, radius = 0.5) {
+  checkCollision(point: THREE.Vector3, radius: number = 0.5): boolean {
     if (!this.mesh || !this.isCollidable) return false;
 
     // Create a bounding box for the mesh
@@ -86,7 +104,7 @@ export class CollidableObject {
   }
 
   // Method to position relative to another object
-  positionRelativeTo(object, offsetX = 0, offsetY = 0, offsetZ = 0) {
+  positionRelativeTo(object: CollidableObject, offsetX: number = 0, offsetY: number = 0, offsetZ: number = 0): void {
     if (!this.mesh || !object.mesh) return;
 
     this.mesh.position.set(
@@ -97,7 +115,7 @@ export class CollidableObject {
   }
 
   // Enable/disable collision
-  setCollidable(value) {
+  setCollidable(value: boolean): void {
     this.isCollidable = value;
     if (this.mesh) {
       this.mesh.userData.isCollidable = value;
@@ -105,9 +123,9 @@ export class CollidableObject {
   }
 
   // Remove from scene
-  remove() {
+  remove(): void {
     if (this.mesh && this.scene) {
       this.scene.remove(this.mesh);
     }
   }
-}
+} 
