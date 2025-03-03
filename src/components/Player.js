@@ -57,6 +57,61 @@ export class Player {
 
     const position = this.controls.getObject().position;
 
+    // Check for collisions with objects in all directions
+    // This is needed both outside and inside buildings
+    this.checkAllDirectionCollisions();
+
+    // If inside a building, we don't need terrain collision checks
+    if (this.insideBuilding) {
+      // Apply gravity
+      this.velocity.y -= this.gravity * delta;
+
+      // Apply vertical velocity (gravity or jumping)
+      position.y += this.velocity.y * delta;
+
+      // Prevent falling through the floor
+      if (position.y < this.height) {
+        position.y = this.height;
+        this.velocity.y = 0;
+        this.canJump = true;
+      }
+
+      // Calculate movement
+      this.direction.z = Number(this.moveForward) - Number(this.moveBackward);
+      this.direction.x = Number(this.moveRight) - Number(this.moveLeft);
+      this.direction.normalize();
+
+      // Calculate velocity
+      if (this.moveForward || this.moveBackward) {
+        this.velocity.z = this.direction.z * this.speed;
+      } else {
+        this.velocity.z = 0;
+      }
+
+      if (this.moveLeft || this.moveRight) {
+        this.velocity.x = this.direction.x * this.speed;
+      } else {
+        this.velocity.x = 0;
+      }
+
+      // Store current position before movement
+      const oldPosition = position.clone();
+
+      // Calculate new position
+      const newPosition = oldPosition.clone();
+      newPosition.x += this.velocity.x * delta;
+      newPosition.z += this.velocity.z * delta;
+
+      // Check for object collisions
+      if (!this.checkObjectCollisions(oldPosition, newPosition)) {
+        // No collision, apply horizontal velocity
+        this.controls.moveRight(this.velocity.x * delta);
+        this.controls.moveForward(this.velocity.z * delta);
+      }
+
+      return;
+    }
+
     // Get terrain height at current position using interpolation for smoother movement
     const terrainHeight = this.world.getInterpolatedHeightAt(position.x, position.z);
     const playerHeightAboveTerrain = position.y - terrainHeight;
@@ -125,9 +180,6 @@ export class Player {
           this.canJump = true;
         }
       }
-    } else {
-      // Collision detected, don't move in that direction
-      // We could implement sliding along walls here
     }
   }
 
@@ -146,6 +198,16 @@ export class Player {
       (obj) => obj.userData && obj.userData.isCollidable
     );
 
+    // Add interior objects if inside a building
+    if (this.insideBuilding && this.interiorGroup) {
+      // Add all interior objects that are collidable
+      this.interiorGroup.traverse((obj) => {
+        if (obj.userData && obj.userData.isCollidable) {
+          collidableObjects.push(obj);
+        }
+      });
+    }
+
     // Check for collisions with all objects and their children
     const intersects = this.collisionRaycaster.intersectObjects(collidableObjects, true);
 
@@ -158,16 +220,27 @@ export class Player {
     const position = this.controls.getObject().position.clone();
     position.y -= this.height / 2; // Adjust to player's center
 
-    // Also check for vertical collisions with tree leaves
+    // Also check for vertical collisions
     this.checkVerticalCollisions(position);
 
+    // Get all objects in the scene that are collidable
+    const collidableObjects = this.scene.children.filter(
+      (obj) => obj.userData && obj.userData.isCollidable
+    );
+
+    // Add interior objects if inside a building
+    if (this.insideBuilding && this.interiorGroup) {
+      // Add all interior objects that are collidable
+      this.interiorGroup.traverse((obj) => {
+        if (obj.userData && obj.userData.isCollidable) {
+          collidableObjects.push(obj);
+        }
+      });
+    }
+
+    // Check for collisions in all directions
     for (const direction of this.collisionDirections) {
       this.collisionRaycaster.set(position, direction);
-
-      // Get all objects in the scene that are collidable
-      const collidableObjects = this.scene.children.filter(
-        (obj) => obj.userData && obj.userData.isCollidable
-      );
 
       // Check for collisions with all objects and their children
       const intersects = this.collisionRaycaster.intersectObjects(collidableObjects, true);
@@ -179,11 +252,29 @@ export class Player {
         this.controls.getObject().position.add(pushBack);
       }
     }
+
+    // Add downward collision check to prevent falling through floors
+    const downDirection = new THREE.Vector3(0, -1, 0);
+    this.collisionRaycaster.set(position, downDirection);
+
+    // Check for collisions with all objects and their children
+    const downIntersects = this.collisionRaycaster.intersectObjects(collidableObjects, true);
+
+    // If there's a collision within the player's height, adjust position
+    if (downIntersects.length > 0 && downIntersects[0].distance < this.height / 2) {
+      // Calculate push-back vector to keep player above the floor
+      const pushBack = new THREE.Vector3(0, this.height / 2 - downIntersects[0].distance, 0);
+      this.controls.getObject().position.add(pushBack);
+
+      // Reset vertical velocity and allow jumping
+      this.velocity.y = 0;
+      this.canJump = true;
+    }
   }
 
-  // Check for collisions above the player (for tree leaves)
+  // Check for collisions above the player
   checkVerticalCollisions(position) {
-    // Check upward for tree leaves
+    // Check upward for ceilings and other objects
     const upDirection = new THREE.Vector3(0, 1, 0);
     this.collisionRaycaster.set(position, upDirection);
 
@@ -191,6 +282,16 @@ export class Player {
     const collidableObjects = this.scene.children.filter(
       (obj) => obj.userData && obj.userData.isCollidable
     );
+
+    // Add interior objects if inside a building
+    if (this.insideBuilding && this.interiorGroup) {
+      // Add all interior objects that are collidable
+      this.interiorGroup.traverse((obj) => {
+        if (obj.userData && obj.userData.isCollidable) {
+          collidableObjects.push(obj);
+        }
+      });
+    }
 
     // Check for collisions with all objects and their children
     const intersects = this.collisionRaycaster.intersectObjects(collidableObjects, true);
@@ -276,15 +377,65 @@ export class Player {
 
     // Check for chest interactions
     if (chestSystem) {
-      const intersects = raycaster.intersectObjects(chestSystem.chests.map((chest) => chest.mesh));
+      // Get all chest meshes and their children for interaction
+      const chestMeshes = [];
+      chestSystem.chests.forEach((chest) => {
+        chestMeshes.push(chest.mesh);
+        // Also add all children of the chest mesh
+        if (chest.mesh.children) {
+          chest.mesh.children.forEach((child) => {
+            chestMeshes.push(child);
+          });
+        }
+      });
+
+      // Intersect with all chest meshes
+      const intersects = raycaster.intersectObjects(chestMeshes);
+
       if (intersects.length > 0 && intersects[0].distance < 3) {
-        const chestIndex = chestSystem.chests.findIndex(
-          (chest) => chest.mesh.id === intersects[0].object.id
-        );
+        // Find which chest was hit (either directly or one of its children)
+        const hitObject = intersects[0].object;
+        let chestIndex = chestSystem.chests.findIndex((chest) => chest.mesh === hitObject);
+
+        // If not found directly, check if it's a child of a chest
+        if (chestIndex === -1) {
+          chestIndex = chestSystem.chests.findIndex(
+            (chest) =>
+              chest.mesh.children && chest.mesh.children.some((child) => child === hitObject)
+          );
+        }
+
         if (chestIndex !== -1) {
           chestSystem.openChest(chestIndex);
           return true;
         }
+      }
+    }
+
+    // Check for interactable objects in the scene
+    const sceneIntersects = raycaster.intersectObjects(this.scene.children, true);
+    for (const intersect of sceneIntersects) {
+      if (
+        intersect.distance < this.interactionDistance &&
+        intersect.object.userData &&
+        intersect.object.userData.isInteractable
+      ) {
+        // Handle interaction with the object
+        console.log("Interacting with object:", intersect.object);
+
+        // If it's a chest, find and open it
+        if (chestSystem) {
+          const chestIndex = chestSystem.chests.findIndex(
+            (chest) =>
+              chest.mesh === intersect.object || chest.mesh.children.includes(intersect.object)
+          );
+          if (chestIndex !== -1) {
+            chestSystem.openChest(chestIndex);
+            return true;
+          }
+        }
+
+        return true;
       }
     }
 
@@ -370,8 +521,19 @@ export class Player {
     // Create interior environment
     this.createInteriorEnvironment();
 
+    // Make sure all interior objects are collidable
+    this.interiorGroup.traverse((object) => {
+      if (object.isMesh && object !== this.interiorGroup) {
+        // Don't make the door collidable so player can exit
+        if (object.userData && !object.userData.isDoor) {
+          object.userData.isCollidable = true;
+        }
+      }
+    });
+
     // Position player inside the building near the door
-    this.controls.getObject().position.set(0, 1.6, 5);
+    this.controls.getObject().position.set(0, this.height, 5);
+    this.velocity.set(0, 0, 0);
 
     // Display a message to the player
     this.showMessage("You entered the building. Go to the door to exit.");
@@ -452,6 +614,7 @@ export class Player {
     const floor = new THREE.Mesh(floorGeometry, floorMaterial);
     floor.position.set(0, 0, 0);
     floor.receiveShadow = true;
+    floor.userData.isCollidable = true;
     this.interiorGroup.add(floor);
 
     // Create walls
@@ -461,6 +624,7 @@ export class Player {
     frontWall.position.set(0, roomHeight / 2, roomDepth / 2);
     frontWall.receiveShadow = true;
     frontWall.castShadow = true;
+    frontWall.userData.isCollidable = true;
     this.interiorGroup.add(frontWall);
 
     // Door in front wall
@@ -470,6 +634,7 @@ export class Player {
     const door = new THREE.Mesh(doorGeometry, doorMaterial);
     door.position.set(0, doorHeight / 2, roomDepth / 2 + 0.1);
     door.userData.isDoor = true;
+    door.userData.isCollidable = true;
     this.interiorGroup.add(door);
 
     // Back wall
@@ -478,6 +643,7 @@ export class Player {
     backWall.position.set(0, roomHeight / 2, -roomDepth / 2);
     backWall.receiveShadow = true;
     backWall.castShadow = true;
+    backWall.userData.isCollidable = true;
     this.interiorGroup.add(backWall);
 
     // Left wall
@@ -486,6 +652,7 @@ export class Player {
     leftWall.position.set(-roomWidth / 2, roomHeight / 2, 0);
     leftWall.receiveShadow = true;
     leftWall.castShadow = true;
+    leftWall.userData.isCollidable = true;
     this.interiorGroup.add(leftWall);
 
     // Right wall
@@ -494,6 +661,7 @@ export class Player {
     rightWall.position.set(roomWidth / 2, roomHeight / 2, 0);
     rightWall.receiveShadow = true;
     rightWall.castShadow = true;
+    rightWall.userData.isCollidable = true;
     this.interiorGroup.add(rightWall);
 
     // Ceiling
@@ -502,6 +670,7 @@ export class Player {
     const ceiling = new THREE.Mesh(ceilingGeometry, wallMaterial);
     ceiling.position.set(0, roomHeight, 0);
     ceiling.receiveShadow = true;
+    ceiling.userData.isCollidable = true;
     this.interiorGroup.add(ceiling);
 
     // Add fireplace on the back wall
@@ -513,6 +682,7 @@ export class Player {
     const fireplaceBaseGeometry = new THREE.BoxGeometry(fireplaceWidth, 1, fireplaceDepth);
     const fireplaceBase = new THREE.Mesh(fireplaceBaseGeometry, stoneMaterial);
     fireplaceBase.position.set(0, 0.5, -roomDepth / 2 + fireplaceDepth / 2);
+    fireplaceBase.userData.isCollidable = true;
     this.interiorGroup.add(fireplaceBase);
 
     // Fireplace sides
@@ -524,6 +694,7 @@ export class Player {
       fireplaceHeight / 2,
       -roomDepth / 2 + fireplaceDepth / 2
     );
+    fireplaceSideLeft.userData.isCollidable = true;
     this.interiorGroup.add(fireplaceSideLeft);
 
     const fireplaceSideRight = new THREE.Mesh(fireplaceSideGeometry, stoneMaterial);
@@ -532,18 +703,21 @@ export class Player {
       fireplaceHeight / 2,
       -roomDepth / 2 + fireplaceDepth / 2
     );
+    fireplaceSideRight.userData.isCollidable = true;
     this.interiorGroup.add(fireplaceSideRight);
 
     // Fireplace top
     const fireplaceTopGeometry = new THREE.BoxGeometry(fireplaceWidth, 0.5, fireplaceDepth);
     const fireplaceTop = new THREE.Mesh(fireplaceTopGeometry, stoneMaterial);
     fireplaceTop.position.set(0, fireplaceHeight - 0.25, -roomDepth / 2 + fireplaceDepth / 2);
+    fireplaceTop.userData.isCollidable = true;
     this.interiorGroup.add(fireplaceTop);
 
     // Fire
     const fireGeometry = new THREE.BoxGeometry(fireplaceWidth - 0.6, 0.8, fireplaceDepth - 0.2);
     const fire = new THREE.Mesh(fireGeometry, fireMaterial);
     fire.position.set(0, 1, -roomDepth / 2 + fireplaceDepth / 2);
+    // Fire is not collidable
     this.interiorGroup.add(fire);
 
     // Add desk on the right wall
@@ -556,6 +730,7 @@ export class Player {
     const deskTop = new THREE.Mesh(deskTopGeometry, woodMaterial);
     deskTop.position.set(roomWidth / 2 - deskDepth / 2 - 0.5, deskHeight, 0);
     deskTop.rotation.y = Math.PI / 2;
+    deskTop.userData.isCollidable = true;
     this.interiorGroup.add(deskTop);
 
     // Desk legs
@@ -568,6 +743,7 @@ export class Player {
 
       const deskLeg = new THREE.Mesh(deskLegGeometry, woodMaterial);
       deskLeg.position.set(legX, deskHeight / 2, legZ);
+      deskLeg.userData.isCollidable = true;
       this.interiorGroup.add(deskLeg);
     }
 
@@ -584,6 +760,7 @@ export class Player {
       bedHeight / 2,
       -roomDepth / 2 + bedLength / 2 + 2
     );
+    bedBase.userData.isCollidable = true;
     this.interiorGroup.add(bedBase);
 
     // Bed mattress
@@ -595,6 +772,7 @@ export class Player {
       bedHeight + 0.15,
       -roomDepth / 2 + bedLength / 2 + 2
     );
+    mattress.userData.isCollidable = true;
     this.interiorGroup.add(mattress);
 
     // Bed pillow
@@ -602,6 +780,7 @@ export class Player {
     const pillowMaterial = new THREE.MeshStandardMaterial({ color: 0xf5f5dc });
     const pillow = new THREE.Mesh(pillowGeometry, pillowMaterial);
     pillow.position.set(-roomWidth / 2 + bedWidth / 2 + 0.5, bedHeight + 0.4, -roomDepth / 2 + 1.5);
+    pillow.userData.isCollidable = true;
     this.interiorGroup.add(pillow);
 
     // Add chest near the door
@@ -617,6 +796,7 @@ export class Player {
       chestHeight * 0.35,
       roomDepth / 2 - chestDepth / 2 - 2
     );
+    chestBase.userData.isCollidable = true;
     this.interiorGroup.add(chestBase);
 
     // Chest lid
@@ -627,6 +807,7 @@ export class Player {
       chestHeight * 0.85,
       roomDepth / 2 - chestDepth / 2 - 2
     );
+    chestLid.userData.isCollidable = true;
     this.interiorGroup.add(chestLid);
 
     // Add metal details to chest
