@@ -87,6 +87,13 @@ export class Game {
     const terrainHeight = this.world.getInterpolatedHeightAt(startX, startZ);
     this.controls.getObject().position.set(startX, terrainHeight + this.player.height, startZ);
 
+    console.log(
+      "Player placed in the village center. Terrain size:",
+      this.world.worldSize,
+      "x",
+      this.world.worldSize
+    );
+
     // Initialize other systems
     this.inventory = new Inventory();
     this.weaponSystem = new WeaponSystem(this.scene, this.camera, this.player);

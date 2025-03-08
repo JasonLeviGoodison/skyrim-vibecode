@@ -53,13 +53,19 @@ export class WeaponSystem {
     // Create weapon models
     this.createWeaponModels();
 
+    // Make sure starting weapon is visible
+    this.showCurrentWeapon();
+
     // Update weapon indicator
     this.updateWeaponIndicator();
+
+    console.log("Weapon system initialized with " + this.currentWeapon);
   }
 
   createWeaponModels(): void {
     // Create sword model
     const swordGroup = new THREE.Group();
+    swordGroup.name = "sword-model";
 
     // Sword handle
     const handleGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.2, 8);
@@ -102,6 +108,9 @@ export class WeaponSystem {
     // Add sword to scene
     this.camera.add(swordGroup);
     this.weapons.sword.model = swordGroup;
+
+    // Initially hide the sword until showCurrentWeapon is called
+    swordGroup.visible = false;
 
     // Create better sword model
     const betterSwordGroup = new THREE.Group();
@@ -237,39 +246,50 @@ export class WeaponSystem {
     this.weapons.bow.arrow = arrowGroup;
   }
 
+  showCurrentWeapon(): void {
+    // Hide all weapons first
+    if (this.weapons.sword.model) this.weapons.sword.model.visible = false;
+    if (this.weapons.betterSword.model && this.weapons.betterSword.acquired)
+      this.weapons.betterSword.model.visible = false;
+    if (this.weapons.bow.model) this.weapons.bow.model.visible = false;
+
+    // Show current weapon
+    if (this.currentWeapon === "sword" && this.weapons.sword.model) {
+      this.weapons.sword.model.visible = true;
+      console.log("Sword is now visible");
+    } else if (
+      this.currentWeapon === "betterSword" &&
+      this.weapons.betterSword.model &&
+      this.weapons.betterSword.acquired
+    ) {
+      this.weapons.betterSword.model.visible = true;
+    } else if (this.currentWeapon === "bow" && this.weapons.bow.model) {
+      this.weapons.bow.model.visible = true;
+    }
+  }
+
   toggleWeapon(): void {
     // Toggle between sword and bow
     if (this.currentWeapon === "sword") {
       // Check if better sword is acquired
       if (this.weapons.betterSword.acquired) {
         this.currentWeapon = "betterSword";
-        this.weapons.sword.model!.visible = false;
-        this.weapons.betterSword.model!.visible = true;
-        this.weapons.bow.model!.visible = false;
-        this.weapons.bow.arrow!.visible = false;
       } else {
         this.currentWeapon = "bow";
-        this.weapons.sword.model!.visible = false;
-        this.weapons.betterSword.model!.visible = false;
-        this.weapons.bow.model!.visible = true;
-        this.weapons.bow.arrow!.visible = false;
       }
     } else if (this.currentWeapon === "betterSword") {
       this.currentWeapon = "bow";
-      this.weapons.sword.model!.visible = false;
-      this.weapons.betterSword.model!.visible = false;
-      this.weapons.bow.model!.visible = true;
-      this.weapons.bow.arrow!.visible = false;
     } else {
       this.currentWeapon = "sword";
-      this.weapons.sword.model!.visible = true;
-      this.weapons.betterSword.model!.visible = false;
-      this.weapons.bow.model!.visible = false;
-      this.weapons.bow.arrow!.visible = false;
     }
 
-    // Update weapon indicator
+    // Show the current weapon
+    this.showCurrentWeapon();
+
+    // Update the weapon indicator
     this.updateWeaponIndicator();
+
+    console.log("Switched to weapon: " + this.currentWeapon);
   }
 
   acquireBetterSword(): void {

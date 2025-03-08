@@ -12,6 +12,9 @@ export class World {
   trees: THREE.Group[];
   buildings: Building[];
   seed: string;
+  isTerrainGenerated: boolean = false;
+  villageCenter: THREE.Vector2;
+  villageRadius: number;
 
   // Day/night cycle properties
   dayDuration: number = 300; // 5 minutes per day
@@ -23,24 +26,29 @@ export class World {
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
-    this.worldSize = 100; // Size of the world in blocks
+    this.worldSize = 200; // Increased size for larger world
     this.blockSize = 1; // Size of each block
     this.heightMap = [];
     this.blocks = [];
     this.trees = [];
     this.buildings = [];
 
+    // Define village center and radius
+    this.villageCenter = new THREE.Vector2(0, 0); // Center of the world
+    this.villageRadius = 30; // Size of the flat village area
+
     // Fixed seed for consistent terrain generation
-    this.seed = "skyrim-minecraft-game-v1";
+    this.seed = "skyrim-minecraft-game-v2"; // Updated seed for new terrain
 
     // Create terrain
     this.generateTerrain();
+    this.isTerrainGenerated = true;
 
-    // Add trees
+    // Add trees (avoid village center)
     this.generateTrees();
 
-    // Add buildings
-    this.generateBuildings();
+    // Add buildings in the village area
+    this.generateVillage();
 
     // Initialize day/night cycle
     this.initDayNightCycle();
@@ -63,8 +71,10 @@ export class World {
   }
 
   generateTerrain(): void {
-    // Create a ground plane
-    const groundGeometry = new THREE.PlaneGeometry(this.worldSize, this.worldSize, 100, 100);
+    console.log("Generating terrain...");
+
+    // Create a ground plane with more segments for better detail
+    const groundGeometry = new THREE.PlaneGeometry(this.worldSize, this.worldSize, 200, 200);
     groundGeometry.rotateX(-Math.PI / 2);
 
     // Create a material with better light reflection properties
@@ -80,7 +90,6 @@ export class World {
     this.scene.add(ground);
 
     // Generate height map using simplex noise
-    // Fix: Create a random number generator with the seed
     const rng = seedrandom(this.seed);
 
     // Create an object with a random method that uses our seeded rng
@@ -104,14 +113,29 @@ export class World {
         const x = i - this.worldSize / 2;
         const z = j - this.worldSize / 2;
 
+        // Calculate distance from village center
+        const distanceToVillage = new THREE.Vector2(x, z).distanceTo(this.villageCenter);
+
         // Generate height using multiple octaves of noise
         let height = 0;
         let frequency = 0.02;
-        let amplitude = 5;
+        let amplitude = 6; // Increased amplitude for more dramatic hills
+
+        // Generate more dramatic terrain for areas outside the village
         for (let k = 0; k < 3; k++) {
           height += simplex.noise(x * frequency, z * frequency) * amplitude;
           frequency *= 2;
           amplitude *= 0.5;
+        }
+
+        // Make the village area flat with a smooth transition to hills
+        if (distanceToVillage < this.villageRadius) {
+          // Completely flat in the central village area
+          height = 0;
+        } else if (distanceToVillage < this.villageRadius + 20) {
+          // Smooth transition from flat village to hilly terrain
+          const transitionFactor = (distanceToVillage - this.villageRadius) / 20;
+          height *= transitionFactor;
         }
 
         this.heightMap[i][j] = height;
@@ -142,6 +166,8 @@ export class World {
 
     // Add grass
     this.addGrass();
+
+    console.log("Terrain generation complete!");
   }
 
   addSkyDome(): void {
@@ -210,63 +236,73 @@ export class World {
   }
 
   generateTrees(): void {
+    console.log("Generating trees...");
+
     // Number of trees to create
-    const numTrees = 50;
+    const numTrees = 150; // More trees for a dense forest outside the village
 
-    // Tree materials with improved lighting properties
-    const trunkMaterial = new THREE.MeshStandardMaterial({
-      color: 0x8b4513, // Brown
-      metalness: 0.1,
-      roughness: 0.8,
-      flatShading: false,
-    });
-
-    const leavesMaterial = new THREE.MeshStandardMaterial({
-      color: 0x2e8b57, // Sea green
-      metalness: 0.0,
-      roughness: 0.7,
-      flatShading: false,
-    });
-
-    // Create trees at random positions
+    // Create trees at random positions (avoid village center)
     for (let i = 0; i < numTrees; i++) {
       // Random position
-      const x = Math.floor(Math.random() * this.worldSize) - this.worldSize / 2;
-      const z = Math.floor(Math.random() * this.worldSize) - this.worldSize / 2;
+      let x, z, distanceToVillage;
+      do {
+        x = Math.floor(Math.random() * (this.worldSize - 20)) - (this.worldSize / 2 - 10);
+        z = Math.floor(Math.random() * (this.worldSize - 20)) - (this.worldSize / 2 - 10);
+        distanceToVillage = new THREE.Vector2(x, z).distanceTo(this.villageCenter);
+      } while (distanceToVillage < this.villageRadius + 5); // Keep trees away from the village
 
       // Get terrain height at this position
-      const y = this.getHeightAt(x, z);
+      const terrainHeight = this.getHeightAt(x, z);
 
       // Create tree group
       const treeGroup = new THREE.Group();
-      treeGroup.position.set(x, y, z);
+      treeGroup.position.set(x, terrainHeight, z);
 
-      // Create trunk
-      const trunkGeometry = new THREE.CylinderGeometry(0.2, 0.3, 2, 8);
+      // Tree trunk
+      const trunkHeight = Math.random() * 2 + 4; // 4-6 units tall
+      const trunkRadius = Math.random() * 0.2 + 0.3; // 0.3-0.5 units radius
+      const trunkGeometry = new THREE.CylinderGeometry(
+        trunkRadius,
+        trunkRadius * 1.2,
+        trunkHeight,
+        8
+      );
+      const trunkMaterial = new THREE.MeshStandardMaterial({
+        color: 0x8b4513, // Brown
+        metalness: 0.1,
+        roughness: 0.8,
+      });
       const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-      trunk.position.y = 1;
+      trunk.position.y = trunkHeight / 2;
       trunk.castShadow = true;
       treeGroup.add(trunk);
 
-      // Create leaves
-      const leavesGeometry = new THREE.ConeGeometry(1, 2, 8);
+      // Tree leaves
+      const leavesRadius = Math.random() * 1 + 1.5; // 1.5-2.5 units radius
+      const leavesGeometry = new THREE.SphereGeometry(leavesRadius, 8, 8);
+      const leavesMaterial = new THREE.MeshStandardMaterial({
+        color: 0x228b22, // Forest green
+        metalness: 0.1,
+        roughness: 0.8,
+      });
       const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
-      leaves.position.y = 2.5;
+      leaves.position.y = trunkHeight + leavesRadius * 0.5;
       leaves.castShadow = true;
       treeGroup.add(leaves);
 
-      // Add tree to scene
+      // Add tree to scene and register it
       this.scene.add(treeGroup);
       this.trees.push(treeGroup);
-
-      // Make tree collidable
-      trunk.userData.isCollidable = true;
     }
+
+    console.log("Tree generation complete!");
   }
 
-  generateBuildings(): void {
-    // Number of buildings to create
-    const numBuildings = 5;
+  generateVillage(): void {
+    console.log("Generating village...");
+
+    // Number of buildings to create in the village
+    const numBuildings = 12;
 
     // Building materials with improved lighting properties
     const wallMaterial = new THREE.MeshStandardMaterial({
@@ -298,19 +334,22 @@ export class World {
       opacity: 0.6,
     });
 
-    // Create buildings at random positions
+    // Create a village layout with buildings arranged in a circular pattern
     for (let i = 0; i < numBuildings; i++) {
-      // Random position
-      const x = Math.floor(Math.random() * 80) - 40;
-      const z = Math.floor(Math.random() * 80) - 40;
+      // Arrange buildings in a circular pattern with some randomness
+      const angle = (i / numBuildings) * Math.PI * 2 + (Math.random() * 0.3 - 0.15);
+      const distance = Math.random() * (this.villageRadius * 0.7 - 10) + 10;
 
-      // Random dimensions (smaller than before)
-      const width = Math.floor(Math.random() * 4) + 8; // 8-12 units wide
-      const depth = Math.floor(Math.random() * 4) + 8; // 8-12 units deep
-      const height = Math.floor(Math.random() * 2) + 5; // 5-7 units tall
-      const roofHeight = 3; // Roof height
+      const x = Math.cos(angle) * distance;
+      const z = Math.sin(angle) * distance;
 
-      // Get terrain height at this position
+      // Vary building sizes for visual interest
+      const width = Math.floor(Math.random() * 3) + 6; // 6-9 units wide
+      const depth = Math.floor(Math.random() * 3) + 6; // 6-9 units deep
+      const height = Math.floor(Math.random() * 2) + 4; // 4-6 units tall
+      const roofHeight = 2; // Roof height
+
+      // Get terrain height at this position (should be 0 in the village)
       const terrainHeight = this.getHeightAt(x, z);
 
       // Create building group
@@ -318,14 +357,16 @@ export class World {
       buildingGroup.position.set(x, terrainHeight, z);
       buildingGroup.userData.isBuilding = true;
 
-      // Randomly select which side the door will be on
-      // 0 = front (positive z), 1 = right (positive x), 2 = back (negative z), 3 = left (negative x)
-      const entranceSide = Math.floor(Math.random() * 4);
+      // Face building toward village center
+      buildingGroup.rotation.y = Math.atan2(-x, -z);
+
+      // Front entrance for all buildings (oriented toward center)
+      const entranceSide = 0; // 0 = front
 
       // Create walls
       const wallThickness = 0.2;
 
-      // Front wall
+      // Front wall (with door)
       const frontWallGeometry = new THREE.BoxGeometry(width, height, wallThickness);
       const frontWall = new THREE.Mesh(frontWallGeometry, wallMaterial);
       frontWall.position.set(0, height / 2, depth / 2);
@@ -353,119 +394,145 @@ export class World {
       rightWall.castShadow = true;
       buildingGroup.add(rightWall);
 
-      // Add door
+      // Add door to front wall
       const doorWidth = 1.5;
       const doorHeight = 3;
-      const doorGeometry = new THREE.BoxGeometry(doorWidth, doorHeight, wallThickness * 2);
+      const doorGeometry = new THREE.BoxGeometry(doorWidth, doorHeight, wallThickness * 1.1);
       const door = new THREE.Mesh(doorGeometry, doorMaterial);
-
-      // Position door based on entrance side
-      switch (entranceSide) {
-        case 0: // Front
-          door.position.set(0, doorHeight / 2, depth / 2 + wallThickness / 2);
-          break;
-        case 1: // Right
-          door.rotation.y = Math.PI / 2;
-          door.position.set(width / 2 + wallThickness / 2, doorHeight / 2, 0);
-          break;
-        case 2: // Back
-          door.position.set(0, doorHeight / 2, -depth / 2 - wallThickness / 2);
-          break;
-        case 3: // Left
-          door.rotation.y = Math.PI / 2;
-          door.position.set(-width / 2 - wallThickness / 2, doorHeight / 2, 0);
-          break;
-      }
-
-      door.castShadow = true;
+      door.position.set(0, doorHeight / 2, depth / 2 + 0.01);
       buildingGroup.add(door);
 
-      // Add windows
-      const windowWidth = 1;
-      const windowHeight = 1;
-      const windowDepth = wallThickness * 2;
-      const windowGeometry = new THREE.BoxGeometry(windowWidth, windowHeight, windowDepth);
+      // Add windows to side walls
+      const windowWidth = 1.2;
+      const windowHeight = 1.2;
+      const windowDepth = wallThickness * 1.1;
+      const windowY = height / 2 + 0.3;
 
-      // Add windows to front wall if door is not there
-      if (entranceSide !== 0) {
-        const frontWindow1 = new THREE.Mesh(windowGeometry, windowMaterial);
-        frontWindow1.position.set(-width / 4, height / 2, depth / 2 + wallThickness / 2);
-        buildingGroup.add(frontWindow1);
+      // Left wall windows
+      const leftWindowGeometry = new THREE.BoxGeometry(windowDepth, windowHeight, windowWidth);
+      const leftWindow1 = new THREE.Mesh(leftWindowGeometry, windowMaterial);
+      leftWindow1.position.set(-width / 2 - 0.01, windowY, depth / 4);
+      buildingGroup.add(leftWindow1);
 
-        const frontWindow2 = new THREE.Mesh(windowGeometry, windowMaterial);
-        frontWindow2.position.set(width / 4, height / 2, depth / 2 + wallThickness / 2);
-        buildingGroup.add(frontWindow2);
-      }
+      const leftWindow2 = new THREE.Mesh(leftWindowGeometry, windowMaterial);
+      leftWindow2.position.set(-width / 2 - 0.01, windowY, -depth / 4);
+      buildingGroup.add(leftWindow2);
 
-      // Add windows to back wall if door is not there
-      if (entranceSide !== 2) {
-        const backWindow1 = new THREE.Mesh(windowGeometry, windowMaterial);
-        backWindow1.position.set(-width / 4, height / 2, -depth / 2 - wallThickness / 2);
-        buildingGroup.add(backWindow1);
+      // Right wall windows
+      const rightWindowGeometry = new THREE.BoxGeometry(windowDepth, windowHeight, windowWidth);
+      const rightWindow1 = new THREE.Mesh(rightWindowGeometry, windowMaterial);
+      rightWindow1.position.set(width / 2 + 0.01, windowY, depth / 4);
+      buildingGroup.add(rightWindow1);
 
-        const backWindow2 = new THREE.Mesh(windowGeometry, windowMaterial);
-        backWindow2.position.set(width / 4, height / 2, -depth / 2 - wallThickness / 2);
-        buildingGroup.add(backWindow2);
-      }
+      const rightWindow2 = new THREE.Mesh(rightWindowGeometry, windowMaterial);
+      rightWindow2.position.set(width / 2 + 0.01, windowY, -depth / 4);
+      buildingGroup.add(rightWindow2);
 
-      // Add windows to left wall if door is not there
-      if (entranceSide !== 3) {
-        const leftWindow1 = new THREE.Mesh(windowGeometry, windowMaterial);
-        leftWindow1.rotation.y = Math.PI / 2;
-        leftWindow1.position.set(-width / 2 - wallThickness / 2, height / 2, -depth / 4);
-        buildingGroup.add(leftWindow1);
+      // Add roof - pitched roof shape
+      const roofWidth = width + 0.5;
+      const roofDepth = depth + 0.5;
 
-        const leftWindow2 = new THREE.Mesh(windowGeometry, windowMaterial);
-        leftWindow2.rotation.y = Math.PI / 2;
-        leftWindow2.position.set(-width / 2 - wallThickness / 2, height / 2, depth / 4);
-        buildingGroup.add(leftWindow2);
-      }
+      // Create pitch roof using triangular prism
+      const roofShape = new THREE.Shape();
+      roofShape.moveTo(-roofWidth / 2, -roofDepth / 2);
+      roofShape.lineTo(roofWidth / 2, -roofDepth / 2);
+      roofShape.lineTo(roofWidth / 2, roofDepth / 2);
+      roofShape.lineTo(-roofWidth / 2, roofDepth / 2);
+      roofShape.lineTo(-roofWidth / 2, -roofDepth / 2);
 
-      // Add windows to right wall if door is not there
-      if (entranceSide !== 1) {
-        const rightWindow1 = new THREE.Mesh(windowGeometry, windowMaterial);
-        rightWindow1.rotation.y = Math.PI / 2;
-        rightWindow1.position.set(width / 2 + wallThickness / 2, height / 2, -depth / 4);
-        buildingGroup.add(rightWindow1);
+      const extrudeSettings = {
+        steps: 1,
+        depth: 0.1,
+        bevelEnabled: false,
+      };
 
-        const rightWindow2 = new THREE.Mesh(windowGeometry, windowMaterial);
-        rightWindow2.rotation.y = Math.PI / 2;
-        rightWindow2.position.set(width / 2 + wallThickness / 2, height / 2, depth / 4);
-        buildingGroup.add(rightWindow2);
-      }
-
-      // Add roof
-      const roofGeometry = new THREE.ConeGeometry(
-        Math.sqrt(width * width + depth * depth) / 2 + 1,
-        roofHeight,
-        4
-      );
-      roofGeometry.rotateY(Math.PI / 4); // Rotate to align with building
+      const roofGeometry = new THREE.ExtrudeGeometry(roofShape, extrudeSettings);
       const roof = new THREE.Mesh(roofGeometry, roofMaterial);
-      roof.position.set(0, height + roofHeight / 2, 0);
-      roof.castShadow = true;
+      roof.rotation.x = Math.PI / 2;
+      roof.position.set(0, height, 0);
       buildingGroup.add(roof);
 
-      // Add building to scene
-      this.scene.add(buildingGroup);
+      // Add A-frame for roof
+      const aFrameShape = new THREE.Shape();
+      aFrameShape.moveTo(-roofWidth / 2, 0);
+      aFrameShape.lineTo(0, roofHeight);
+      aFrameShape.lineTo(roofWidth / 2, 0);
+      aFrameShape.lineTo(-roofWidth / 2, 0);
 
-      // Store building reference with metadata
+      const aFrameGeometry = new THREE.ShapeGeometry(aFrameShape);
+      const aFrameFront = new THREE.Mesh(aFrameGeometry, roofMaterial);
+      aFrameFront.position.set(0, height, roofDepth / 2);
+      aFrameFront.castShadow = true;
+      buildingGroup.add(aFrameFront);
+
+      const aFrameBack = new THREE.Mesh(aFrameGeometry, roofMaterial);
+      aFrameBack.position.set(0, height, -roofDepth / 2);
+      aFrameBack.castShadow = true;
+      buildingGroup.add(aFrameBack);
+
+      // Create sloped roof
+      const slopeGeometry = new THREE.BufferGeometry();
+      const vertices = new Float32Array([
+        // Left side
+        -roofWidth / 2,
+        height,
+        -roofDepth / 2,
+        -roofWidth / 2,
+        height,
+        roofDepth / 2,
+        0,
+        height + roofHeight,
+        -roofDepth / 2,
+        -roofWidth / 2,
+        height,
+        roofDepth / 2,
+        0,
+        height + roofHeight,
+        roofDepth / 2,
+        0,
+        height + roofHeight,
+        -roofDepth / 2,
+
+        // Right side
+        roofWidth / 2,
+        height,
+        -roofDepth / 2,
+        0,
+        height + roofHeight,
+        -roofDepth / 2,
+        roofWidth / 2,
+        height,
+        roofDepth / 2,
+        0,
+        height + roofHeight,
+        -roofDepth / 2,
+        0,
+        height + roofHeight,
+        roofDepth / 2,
+        roofWidth / 2,
+        height,
+        roofDepth / 2,
+      ]);
+
+      slopeGeometry.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
+      slopeGeometry.computeVertexNormals();
+      const slopeRoof = new THREE.Mesh(slopeGeometry, roofMaterial);
+      slopeRoof.castShadow = true;
+      buildingGroup.add(slopeRoof);
+
+      // Add building to scene and register it
+      this.scene.add(buildingGroup);
       this.buildings.push({
         group: buildingGroup,
+        width,
+        depth,
+        height: height + roofHeight,
         position: new THREE.Vector3(x, terrainHeight, z),
-        width: width,
-        depth: depth,
-        height: height,
-        entranceSide: entranceSide,
-      });
-
-      // Make building collidable
-      buildingGroup.traverse((object) => {
-        if (object instanceof THREE.Mesh) {
-          object.userData.isCollidable = true;
-        }
+        entranceSide,
       });
     }
+
+    console.log("Village generation complete!");
   }
 
   getHeightAt(x: number, z: number): number {
