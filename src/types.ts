@@ -21,6 +21,7 @@ export interface Weapon {
   acquired?: boolean;
   arrow?: THREE.Object3D | null;
   lastFired?: number;
+  attackType?: string; // "stab" or "slash"
 }
 
 export interface Weapons {

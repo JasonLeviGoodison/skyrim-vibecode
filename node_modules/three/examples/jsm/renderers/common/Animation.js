@@ -1,18 +1,23 @@
 class Animation {
 
-	constructor( nodes, info ) {
+	constructor() {
 
-		this.nodes = nodes;
-		this.info = info;
+		this.nodes = null;
 
 		this.animationLoop = null;
 		this.requestId = null;
 
-		this._init();
+		this.isAnimating = false;
+
+		this.context = self;
 
 	}
 
-	_init() {
+	start() {
+
+		if ( this.isAnimating === true || this.animationLoop === null || this.nodes === null ) return;
+
+		this.isAnimating = true;
 
 		const update = ( time, frame ) => {
 
@@ -20,25 +25,31 @@ class Animation {
 
 			this.nodes.nodeFrame.update();
 
-			this.info.frame = this.nodes.nodeFrame.frameId;
-
-			if ( this.animationLoop !== null ) this.animationLoop( time, frame );
+			this.animationLoop( time, frame );
 
 		};
 
-		update();
+		this.requestId = self.requestAnimationFrame( update );
 
 	}
 
-	dispose() {
+	stop() {
 
 		self.cancelAnimationFrame( this.requestId );
+
+		this.isAnimating = false;
 
 	}
 
 	setAnimationLoop( callback ) {
 
 		this.animationLoop = callback;
+
+	}
+
+	setNodes( nodes ) {
+
+		this.nodes = nodes;
 
 	}
 

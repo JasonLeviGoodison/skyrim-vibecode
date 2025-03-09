@@ -4,19 +4,12 @@ class Info {
 
 		this.autoReset = true;
 
-		this.frame = 0;
-		this.calls = 0;
-
 		this.render = {
-			calls: 0,
+			frame: 0,
 			drawCalls: 0,
 			triangles: 0,
 			points: 0,
 			lines: 0
-		};
-
-		this.compute = {
-			calls: 0
 		};
 
 		this.memory = {
@@ -67,10 +60,7 @@ class Info {
 
 		this.reset();
 
-		this.calls = 0;
-
-		this.render.calls = 0;
-		this.compute.calls = 0;
+		this.render.frame = 0;
 
 		this.memory.geometries = 0;
 		this.memory.textures = 0;

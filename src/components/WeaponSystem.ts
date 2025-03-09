@@ -31,6 +31,7 @@ export class WeaponSystem {
         cooldown: 0.3,
         model: null,
         acquired: true,
+        attackType: "slash",
       },
       sword: {
         damage: 20,
@@ -38,6 +39,7 @@ export class WeaponSystem {
         cooldown: 0.5,
         model: null,
         acquired: true,
+        attackType: "slash",
       },
       betterSword: {
         damage: 35,
@@ -45,6 +47,7 @@ export class WeaponSystem {
         cooldown: 0.4,
         model: null,
         acquired: false,
+        attackType: "slash",
       },
       bow: {
         damage: 15,
@@ -121,7 +124,7 @@ export class WeaponSystem {
 
     // Position dagger in the center-right of the screen
     daggerGroup.position.set(0.4, -0.2, -0.5);
-    // Fix orientation - flip the dagger 180 degrees around the Y axis so the blade points outward
+    // Fix orientation - make dagger point forward for stabbing (blade pointing away from player)
     daggerGroup.rotation.set(-Math.PI / 2, 0, -0.2);
     daggerGroup.scale.set(2, 2, 2);
 
@@ -228,7 +231,7 @@ export class WeaponSystem {
     // Position better sword with pointing upward
     betterSwordGroup.position.set(0.5, -0.2, -0.5);
     // Rotate to point upward with blade tip above handle
-    betterSwordGroup.rotation.set(-0.7, -0.5 + Math.PI, 0.1);
+    betterSwordGroup.rotation.set(-Math.PI / 2, 0, -0.2);
     betterSwordGroup.scale.set(2.2, 2.2, 2.2);
 
     // Add better sword to camera
@@ -504,6 +507,8 @@ export class WeaponSystem {
   }
 
   attack(): void {
+    console.log("Attack called for weapon:", this.currentWeapon);
+
     const currentTime = performance.now() / 1000;
     const currentWeapon = this.weapons[this.currentWeapon];
 
@@ -512,6 +517,7 @@ export class WeaponSystem {
       currentWeapon &&
       currentTime - this.lastAttackTime < (currentWeapon.cooldown || this.attackCooldown)
     ) {
+      console.log("Weapon on cooldown");
       return;
     }
 
@@ -520,108 +526,157 @@ export class WeaponSystem {
 
     // Skip if already attacking
     if (this.isAttacking) {
+      console.log("Already attacking");
       return;
     }
 
-    this.isAttacking = true;
-
     // Perform attack based on weapon type
     if (this.currentWeapon === "bow") {
+      console.log("Performing bow attack");
       this.bowAttack();
     } else {
       // Melee attack (dagger, sword, better sword)
+      console.log("Performing melee attack");
       this.meleeAttack();
     }
   }
 
   meleeAttack(): void {
-    const weapon = this.weapons[this.currentWeapon];
-    if (!weapon || !weapon.model) return;
+    // Skip if already attacking
+    if (this.isAttacking) return;
 
-    const weaponModel = weapon.model;
-    const originalRotation = weaponModel.rotation.clone();
-    const originalPosition = weaponModel.position.clone();
+    // Set attacking flag
+    this.isAttacking = true;
 
-    // Different attack animations for different melee weapons
-    let swingAngle = Math.PI / 4;
-    let swingDuration = 0.3;
-    let attackType = "stab"; // "stab" or "slash"
-
-    if (this.currentWeapon === "dagger") {
-      // Dagger uses a forward stabbing motion
-      swingAngle = Math.PI / 3;
-      swingDuration = 0.25; // Faster animation
-      attackType = "stab";
-    } else if (this.currentWeapon === "sword" || this.currentWeapon === "betterSword") {
-      // Swords use a diagonal slashing motion from top right to bottom left
-      swingAngle = Math.PI / 2.5; // Wider angle for more dramatic slash
-      swingDuration = 0.35; // Slightly slower for more impact
-      attackType = "slash";
+    // Get weapon model
+    const weaponModel = this.weapons[this.currentWeapon].model;
+    if (!weaponModel) {
+      this.isAttacking = false;
+      return;
     }
 
-    // Animation timing
-    const startTime = performance.now();
+    // Store original position and rotation
+    const originalPosition = weaponModel.position.clone();
+    const originalRotation = new THREE.Euler().copy(weaponModel.rotation);
 
-    // Attach a sound effect to the attack
+    // Get attack type (default to "stab" if not specified)
+    const attackType = this.weapons[this.currentWeapon].attackType || "stab";
+
+    // Play sound effect
     if (typeof Audio !== "undefined") {
       const sound = new Audio();
-      // if (this.currentWeapon === "dagger") {
-      //   sound.src = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tAwAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAALAAAbPgAREhISFBUVFRcYGBgaGxwcHiAhISMlJiYmKCkpKSstLS8xMjIyNDU1NTc4ODg6Ozw8PkBBQUFDREREQkMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/7UMQAAApkARiUAAAr5LHHPBgARAAVJTGqE9GTEFTBoJqJmJgaFQCmKFiGHCAgICAgICAgICAgICAgICAgICAgICAvpvX2/v89FnZV5tgTWAYMYwjUZUjYVhwFAnGJRJRQ2VH5Kh8QJf/7UMQHgAthax34wAAj6zvnoAYARTQZDLUQrS5QL0Bt6NdqOKAAAJvB5KRhaY7YgioAAAAAAP39/fx2dnZ2eHh4d3d3d3qGhoZ4eHqX5Nz62LuQTpxZ3I+u14eMXz5xMBwMnUt4Tn6Qav/7UMQIgAo0Wx2AjAFJCjFjsBGAKDfhUGPRbHGZMcbYxLm+Vt77WwA0nfj+x3//5csMB5TgCAYBpvkzf+p8Ou28UKN+mzqyEyZpKlZDRq+mrUq8bsaTpxhSlM5rvWqCfTnfQJJtTf/7UMQSgAssYr0FBACJX4xW4IYAkT8Ym00m3Uk1gKQYJpI3TWWuZ0IYfA2hqDRxoWzb8Yx1//7e//9D7//9DdgAGgO6EYdmZMuPNsujJk1f+aYgBuihiChGLQMGjHxqVZwfGAf/7UMQYAAq8HpdFAAApPw7M9KAABgAHJAQiImkjH///6///////9BBgwPBAZkWyLo///oiIiOwAABwOnHR////////9v////+v6///9UREREf+v//Yh//1HwxZf//GG3/xVZciv/7UMQogAwcGo8FgAAJjg9HsMAAAAAAACOMEQaqqhg7oGKomMvT1pN3WPl7Qefu3cLnBOCw7NUtmRmUuUzlKyD/9vE+7k95WVnLnS1VYRVZZHVXLHVmlDKrLHVlX7a/63/rf/1v/7UMQrgAqIeyelAAAJRY9n9KAABLf/////fRRa+oqADAEJfFsrO2JtLVe///UpQjZcbX/utqb/3/9b4nrq+rUoZ8VWlrWv/3X2UtVVXDVL9VtbVX+//+0Cy3//+7/TLUEktqqv/7UMQxgAqwipfQwAALFhXl+hgAEV+lqVkk621/XX+qv//6//3///v/99/////7f9P////7fxWPHDHAuIsxADgRwoEgwU1YQJ0BJJAKt//f/3//p/////////+oIAAgAOEgF//7UMQ6AAogepbFAAAJRY9S2KAABKiQH+rMtirL9////////+yrUsH//u///b9b0/6/+m+mqHAEHF1qc1YvHxN/61pYK/s/9bfr31v20+t////+36///////7//7IYwhBhCDAEU//7UMRGARDUcuVBDAEs9jVSqGAJRMB0pzKqr//7f9vV///20rf+3///b/t/+3////b//9vRwwhxEVViO4D8VCvl/////7ev/+u3//////qIRFFb/////////+3//////hzgEAi6UAAAT//7UMROA4mQPqVQQABNdkVPYy8ANIAOHkSBrjO4Xbg1QQRIlJgdKS87f/9f+t+77fr/t//7e//p/7/+/+gQUPBCqJJMTi9KrZpaTSrWlNqWn01N/X0u1LS/V//+3///////////7f/7UMRJAAAACrAQAADUIf///////rbDAMcAAAqimZ3MaCMlnNrKUTEK5mRTrrfUdMZkbT6I5jnQh//lRRaPlYKuW+bXUo/L6jrrXXWWvTQNWLJXZWo96LovqOp9Gjtdv10er6ft+u39d//7UMRJA8mBZngJbAALiBTZBK2ABaGjsbb769F0a62+v////39fr60ZTWtG3RRaiM4hCQUgaQHxGDKRFSS5clnMp5FYiLLlQ1hTMrKgpXSspSoP+k+OUYcE/ikP/QP4cH+OP+H8n6kB+Af/7UMQwA8sBQYAFrAAL1hTDAV4AAgfMKqJ5E84aEJBIvT1GtSKIilFdF0fR9b9ddOv14fRdFdGiNVoxptXRVv///vRq9GaXdNXrXr06/X66K6IxXVorGKKL0iuiMRoj60TXRFNG//7UMQ/g88sUYAVeAALdhTCALWAAhtGa66NFFHH4jx8cQj45j45R8XH8cQfHx8cfxySc5JJJJz///+gH0oH3//dE/6QA//5ID6QBJCXlQrCiSQWoYkQsVCZWIRLWXkQsWCwWCwXC/Nxf/7UMRSg88IMQAVrAALDjCxwDAAF5cJwqlQ0+mQ0NFYuF2amkNIYLhaLhYKhYLBcKhUKJQzEgL1vqAQBaP8qCST8qPQP//6QP0//0//h///xAAAoIj/SyT/SyUKInKo/SgRKRKCi//7UMRmg824knAFbAALSBJIAMPAUJUBBBYkmQokkRUMhQMkRUMhWe6u4nZVVYonEMKBQMERVwqmUyqe4pS9/6DAgADDBBgYiuP///UAGDBgwZLV1WTEFNRTMuMTAwqqqqqqqqqqqqqqq//7UMR2g4AAAqQQAADUIAAANIAAAAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//7UMSjA74AAqAAAADcIAAANIAAAAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqg==";
-      // } else if (this.currentWeapon === "sword" || this.currentWeapon === "betterSword") {
-      //   sound.src = 'data:audio/mp3;base64,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';
-      // }
+      if (this.currentWeapon === "dagger") {
+        sound.src =
+          "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tAwAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAALAAAbPgAREhISFBUVFRcYGBgaGxwcHiAhISMlJiYmKCkpKSstLS8xMjIyNDU1NTc4ODg6Ozw8PkBBQUFDREREQkMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/7UMQAAApkARiUAAAr5LHHPBgARAAVJTGqE9GTEFTBoJqJmJgaFQCmKFiGHCAgICAgICAgICAgICAgICAgICAgICAvpvX2/v89FnZV5tgTWAYMYwjUZUjYVhwFAnGJRJRQ2VH5Kh8QJf/7UMQHgAthax34wAAj6zvnoAYARTQZDLUQrS5QL0Bt6NdqOKAAAJvB5KRhaY7YgioAAAAAAP39/fx2dnZ2eHh4d3d3d3qGhoZ4eHqX5Nz62LuQTpxZ3I+u14eMXz5xMBwMnUt4Tn6Qav/7UMQIgAo0Wx2AjAFJCjFjsBGAKDfhUGPRbHGZMcbYxLm+Vt77WwA0nfj+x3//5csMB5TgCAYBpvkzf+p8Ou28UKN+mzqyEyZpKlZDRq+mrUq8bsaTpxhSlM5rvWqCfTnfQJJtTf/7UMQSgAssYr0FBACJX4xW4IYAkT8Ym00m3Uk1gKQYJpI3TWWuZ0IYfA2hqDRxoWzb8Yx1//7e//9D7//9DdgAGgO6EYdmZMuPNsujJk1f+aYgBuihiChGLQMGjHxqVZwfGAf/7UMQYAAq8HpdFAAApPw7M9KAABgAHJAQiImkjH///6///////9BBgwPBAZkWyLo///oiIiOwAABwOnHR////////9v////+v6///9UREREf+v//Yh//1HwxZf//GG3/xVZciv/7UMQogAwcGo8FgAAJjg9HsMAAAAAAACOMEQaqqhg7oGKomMvT1pN3WPl7Qefu3cLnBOCw7NUtmRmUuUzlKyD/9vE+7k95WVnLnS1VYRVZZHVXLHVmlDKrLHVlX7a/63/rf/1v/7UMQrgAqIeyelAAAJRY9n9KAABLf/////fRRa+oqADAEJfFsrO2JtLVe///UpQjZcbX/utqb/3/9b4nrq+rUoZ8VWlrWv/3X2UtVVXDVL9VtbVX+//+0Cy3//+7/TLUEktqqv/7UMQxgAqwipfQwAALFhXl+hgAEV+lqVkk621/XX+qv//6//3///v/99/////7f9P////7fxWPHDHAuIsxADgRwoEgwU1YQJ0BJJAKt//f/3//p/////////+oIAAgAOEgF//7UMQ6AAogepbFAAAJRY9S2KAABKiQH+rMtirL9////////+yrUsH//u///b9b0/6/+m+mqHAEHF1qc1YvHxN/61pYK/s/9bfr31v20+t////+36///////7//7IYwhBhCDAEU//7UMRGARDUcuVBDAEs9jVSqGAJRMB0pzKqr//7f9vV///20rf+3///b/t/+3////b//9vRwwhxEVViO4D8VCvl/////7ev/+u3//////qIRFFb/////////+3//////hzgEAi6UAAAT//7UMROA4mQPqVQQABNdkVPYy8ANIAOHkSBrjO4Xbg1QQRIlJgdKS87f/9f+t+77fr/t//7e//p/7/+/+gQUPBCqJJMTi9KrZpaTSrWlNqWn01N/X0u1LS/V//+3///////////7f/7UMRJAAAACrAQAADUIf///////rbDAMcAAAqimZ3MaCMlnNrKUTEK5mRTrrfUdMZkbT6I5jnQh//lRRaPlYKuW+bXUo/L6jrrXXWWvTQNWLJXZWo96LovqOp9Gjtdv10er6ft+u39d//7UMRJA8mBZngJbAALiBTZBK2ABaGjsbb769F0a62+v////39fr60ZTWtG3RRaiM4hCQUgaQHxGDKRFSS5clnMp5FYiLLlQ1hTMrKgpXSspSoP+k+OUYcE/ikP/QP4cH+OP+H8n6kB+Af/7UMQwA8sBQYAFrAAL1hTDAV4AAgfMKqJ5E84aEJBIvT1GtSKIilFdF0fR9b9ddOv14fRdFdGiNVoxptXRVv///vRq9GaXdNXrXr06/X66K6IxXVorGKKL0iuiMRoj60TXRFNG//7UMQ/g88sUYAVeAALdhTCALWAAhtGa66NFFHH4jx8cQj45j45R8XH8cQfHx8cfxySc5JJJJz///+gH0oH3//dE/6QA//5ID6QBJCXlQrCiSQWoYkQsVCZWIRLWXkQsWCwWCwXC/Nxf/7UMRSg88IMQAVrAALDjCxwDAAF5cJwqlQ0+mQ0NFYuF2amkNIYLhaLhYKhYLBcKhUKJQzEgL1vqAQBaP8qCST8qPQP//6QP0//0//h///xAAAoIj/SyT/SyUKInKo/SgRKRKCi//7UMRmg824knAFbAALSBJIAMPAUJUBBBYkmQokkRUMhQMkRUMhWe6u4nZVVYonEMKBQMERVwqmUyqe4pS9/6DAgADDBBgYiuP///UAGDBgwZLV1WTEFNRTMuMTAwqqqqqqqqqqqqqqq//7UMR2g4AAAqQQAADUIAAANIAAAAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//7UMSjA74AAqAAAADcIAAANIAAAAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqg==";
+      } else if (this.currentWeapon === "sword" || this.currentWeapon === "betterSword") {
+        sound.src =
+          "data:audio/mp3;base64,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";
+      }
       sound.volume = 0.3;
       sound.play().catch((e) => console.log("Audio play error:", e));
     }
 
-    // Start animation
+    // Animation timing
+    const duration = 0.3; // seconds
+    const startTime = performance.now() / 1000;
+
+    // Animation function
     const animate = () => {
-      const now = performance.now();
-      const elapsed = (now - startTime) / 1000;
-      const progress = Math.min(elapsed / swingDuration, 1);
+      const currentTime = performance.now() / 1000;
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
 
-      if (progress < 1) {
-        if (attackType === "stab") {
-          // Forward stabbing motion (dagger)
-          weaponModel.position.z = originalPosition.z - Math.sin(progress * Math.PI) * 0.3;
+      // Simple animation based on attack type
+      if (attackType === "stab") {
+        // Dagger stabbing animation
+        if (progress < 0.3) {
+          // Wind-up phase - rotate to point forward
+          const windupProgress = progress / 0.3;
+          weaponModel.position.z = originalPosition.z + windupProgress * 0.1;
+
+          // Rotate from upward-pointing to forward-pointing
+          weaponModel.rotation.x = originalRotation.x + (windupProgress * Math.PI) / 2;
+        } else if (progress < 0.7) {
+          // Stab phase - maintain forward orientation and thrust
+          const stabProgress = (progress - 0.3) / 0.4;
+          weaponModel.position.z = originalPosition.z + 0.1 - stabProgress * 0.3;
+          weaponModel.position.y = originalPosition.y - stabProgress * 0.15;
+
+          // Keep pointing forward during stab
+          weaponModel.rotation.x = originalRotation.x + Math.PI / 2;
+        } else {
+          // Return phase - rotate back to original upward position
+          const returnProgress = (progress - 0.7) / 0.3;
+          weaponModel.position.z = originalPosition.z - 0.2 + returnProgress * 0.2;
+          weaponModel.position.y = originalPosition.y - 0.15 + returnProgress * 0.15;
+
+          // Rotate back to original upward position
           weaponModel.rotation.x =
-            originalRotation.x - Math.sin(progress * Math.PI) * (swingAngle * 0.5);
-        } else if (attackType === "slash") {
-          // For sword, we need to replicate a natural downward diagonal slash
-          const swingProgress = Math.sin(progress * Math.PI);
-
-          // Start position: sword raised high at top-right
-          // End position: sword down at bottom-left after slash
-
-          // First prepare the swing by raising the sword slightly (first 30% of animation)
-          if (progress < 0.3) {
-            const prepProgress = progress / 0.3; // 0 to 1 during prep phase
-            // Raise sword slightly up and back
-            weaponModel.position.y = originalPosition.y + prepProgress * 0.1; // Move up
-            weaponModel.position.x = originalPosition.x - prepProgress * 0.05; // Move slightly left
-            weaponModel.rotation.z = originalRotation.z - prepProgress * 0.2; // Tilt slightly
-          }
-          // Then perform the actual slash (remaining 70% of animation)
-          else {
-            const slashProgress = (progress - 0.3) / 0.7; // 0 to 1 during slash phase
-            // Diagonal slashing motion from high position to low position
-            weaponModel.position.y = originalPosition.y + 0.1 - slashProgress * 0.4; // Move from high to low
-            weaponModel.position.x = originalPosition.x - 0.05 - slashProgress * 0.2; // Move from right to left
-            weaponModel.rotation.z = originalRotation.z - 0.2 + slashProgress * 0.6; // Rotate through the swing
-            weaponModel.rotation.x = originalRotation.x + slashProgress * 0.3; // Rotate blade angle during swing
-          }
+            originalRotation.x + Math.PI / 2 - returnProgress * (Math.PI / 2);
         }
+      } else if (attackType === "slash") {
+        // Sword slashing animation - corrected for a proper forward slash
+        if (progress < 0.3) {
+          // Wind-up phase - pull back and up
+          const windupProgress = progress / 0.3;
 
+          // Pull the sword back (away from the screen)
+          weaponModel.position.z = originalPosition.z + windupProgress * 0.2; // Positive Z is away from the camera
+
+          // Raise the sword up
+          weaponModel.position.y = originalPosition.y - windupProgress * 0.15;
+
+          // Rotate to prepare for slash
+          weaponModel.rotation.x = originalRotation.x + (windupProgress * Math.PI) / 3; // Tilt forward
+          weaponModel.rotation.y = originalRotation.y - (windupProgress * Math.PI) / 6; // Slight twist
+        } else if (progress < 0.7) {
+          // Slash phase - dramatic forward and downward slash
+          const slashProgress = (progress - 0.3) / 0.4;
+
+          // Move forward (toward the screen) and down in an arc
+          weaponModel.position.z = originalPosition.z - 0.2 + slashProgress * 0.4; // Move from back to front
+          weaponModel.position.y = originalPosition.y + 0.15 - slashProgress * 0.3; // Move from up to down
+
+          // Add dramatic rotation during slash
+          weaponModel.rotation.x = originalRotation.x - Math.PI / 3 - (slashProgress * Math.PI) / 4; // Continue tilting backward
+          weaponModel.rotation.y = originalRotation.y + Math.PI / 6 - (slashProgress * Math.PI) / 3; // Twist through the slash
+          weaponModel.rotation.z = originalRotation.z + (slashProgress * Math.PI) / 3; // Add diagonal slash motion
+        } else {
+          // Return phase - smoothly return to original position
+          const returnProgress = (progress - 0.7) / 0.3;
+
+          // Return to original position
+          weaponModel.position.z = originalPosition.z + 0.2 - returnProgress * 0.2;
+          weaponModel.position.y = originalPosition.y - 0.15 + returnProgress * 0.15;
+
+          // Return to original rotation
+          weaponModel.rotation.x =
+            originalRotation.x -
+            Math.PI / 3 -
+            Math.PI / 4 +
+            returnProgress * (Math.PI / 3 + Math.PI / 4);
+          weaponModel.rotation.y =
+            originalRotation.y +
+            Math.PI / 6 -
+            Math.PI / 3 +
+            returnProgress * (Math.PI / 3 - Math.PI / 6);
+          weaponModel.rotation.z =
+            originalRotation.z + Math.PI / 3 - (returnProgress * Math.PI) / 3;
+        }
+      }
+
+      // Check for hits during the middle of the animation
+      if (progress > 0.4 && progress < 0.6) {
+        this.checkMeleeHits();
+      }
+
+      // Continue animation or reset
+      if (progress < 1) {
         requestAnimationFrame(animate);
       } else {
-        // Reset rotation and position
-        weaponModel.rotation.copy(originalRotation);
+        // Reset position and rotation
         weaponModel.position.copy(originalPosition);
-
-        // Check for hits
-        this.checkMeleeHits();
-
-        // End attack
+        weaponModel.rotation.copy(originalRotation);
         this.isAttacking = false;
       }
     };
