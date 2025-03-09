@@ -75,6 +75,10 @@ export class Game {
     this.camera.position.y = 1.6; // Eye height
     this.controls = new PointerLockControls(this.camera, document.body);
 
+    // Add pointer lock controls to scene - BUT DO NOT add camera directly
+    // this.scene.add(this.camera); // This line caused the movement issue - REMOVED
+    this.scene.add(this.controls.getObject());
+
     // Initialize game systems - Note the order is important!
     // First create the world, then the player, and set the world reference in the player
     this.world = new World(this.scene);
@@ -105,24 +109,30 @@ export class Game {
     // Set up event listeners
     this.setupEventListeners();
 
-    // Start game loop
-    this.animate();
+    // Setup debug info and mini-map
+    this.setupDebugInfo();
+    this.setupMiniMap();
+    this.setupControlsHelp();
 
-    // Lock controls on click
+    // Set up resize event listener
+    window.addEventListener("resize", () => {
+      // Update camera aspect ratio
+      this.camera.aspect = window.innerWidth / window.innerHeight;
+      this.camera.updateProjectionMatrix();
+
+      // Update renderer size
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Ensure pointer lock works by adding a click listener
     document.addEventListener("click", () => {
       if (!this.controls.isLocked) {
         this.controls.lock();
       }
     });
 
-    // Add debug info
-    this.setupDebugInfo();
-
-    // Initialize mini-map
-    this.setupMiniMap();
-
-    // Hide controls help after 10 seconds
-    this.setupControlsHelp();
+    // Start animation loop
+    this.animate();
   }
 
   setupDebugInfo(): void {
@@ -199,15 +209,48 @@ export class Game {
           // Toggle weapon
           this.weaponSystem.toggleWeapon();
           break;
+        case "Digit1":
+          // Select dagger
+          if (
+            this.weaponSystem.weapons.dagger &&
+            (this.weaponSystem.weapons.dagger.acquired === undefined ||
+              this.weaponSystem.weapons.dagger.acquired === true)
+          ) {
+            this.weaponSystem.currentWeapon = "dagger";
+            this.weaponSystem.showCurrentWeapon();
+            this.weaponSystem.updateWeaponIndicator();
+          }
+          break;
+        case "Digit2":
+          // Select sword
+          if (
+            this.weaponSystem.weapons.sword &&
+            (this.weaponSystem.weapons.sword.acquired === undefined ||
+              this.weaponSystem.weapons.sword.acquired === true)
+          ) {
+            this.weaponSystem.currentWeapon = "sword";
+            this.weaponSystem.showCurrentWeapon();
+            this.weaponSystem.updateWeaponIndicator();
+          }
+          break;
+        case "Digit3":
+          // Select bow
+          if (
+            this.weaponSystem.weapons.bow &&
+            (this.weaponSystem.weapons.bow.acquired === undefined ||
+              this.weaponSystem.weapons.bow.acquired === true)
+          ) {
+            this.weaponSystem.currentWeapon = "bow";
+            this.weaponSystem.showCurrentWeapon();
+            this.weaponSystem.updateWeaponIndicator();
+          }
+          break;
         case "ShiftLeft":
         case "ShiftRight":
           // Enable sprinting
           this.inputState.sprint = true;
           this.player.speed = 20.0; // Double speed when sprinting
           break;
-        case "Digit1":
-        case "Digit2":
-        case "Digit3":
         case "Digit4":
         case "Digit5":
         case "Digit6":
@@ -262,8 +305,8 @@ export class Game {
 
     // Handle mouse click for attacking
     const onMouseDown = (event: MouseEvent) => {
-      if (event.button === 0 && this.controls.isLocked) {
-        // Left click
+      if (event.button === 0) {
+        // Left mouse button - attack
         this.weaponSystem.attack();
         this.inputState.attack = true;
       }
@@ -271,14 +314,25 @@ export class Game {
 
     const onMouseUp = (event: MouseEvent) => {
       if (event.button === 0) {
+        // Left mouse button released
         this.inputState.attack = false;
       }
     };
 
+    // Add event listeners
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
     document.addEventListener("mousedown", onMouseDown);
     document.addEventListener("mouseup", onMouseUp);
+
+    // Listen for weapon damage events
+    document.addEventListener("objectDamaged", (event: any) => {
+      const detail = event.detail;
+      if (detail && detail.object && detail.object.userData && detail.object.userData.isEnemy) {
+        console.log(`Enemy hit with ${detail.weaponType} for ${detail.damage} damage!`);
+        // Update game state if needed
+      }
+    });
   }
 
   setupControlsHelp(): void {
@@ -477,8 +531,20 @@ export class Game {
     this.weaponSystem.update(delta);
     this.chestSystem.update(delta, this.camera);
 
+    // Ensure camera matrix is updated
+    this.camera.updateMatrixWorld(true);
+
+    // If a frame has passed and we don't see the weapon, try to show it again
+    if (this.gameState.time > 1 && !this.weaponSystem.isWeaponVisible()) {
+      console.log("Weapon not visible, re-showing current weapon");
+      this.weaponSystem.showCurrentWeapon();
+    }
+
     // Update mini-map
     this.updateMiniMap();
+
+    // Update direction indicator
+    this.updateDirectionIndicator();
 
     // Render scene
     this.renderer.render(this.scene, this.camera);
